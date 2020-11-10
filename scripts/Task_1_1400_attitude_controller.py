@@ -20,9 +20,11 @@ from vitarana_drone.msg import *
 from pid_tune.msg import PidTune
 from sensor_msgs.msg import Imu
 from std_msgs.msg import Float32
+from std_msgs.msg import Float64
 import rospy
 import time
 import tf
+a=1
 
 
 class Edrone():
@@ -40,7 +42,7 @@ class Edrone():
 
         # This is the setpoint that will be received from the drone_command in the range from 1000 to 2000
         # [r_setpoint, p_setpoint, y_setpoint]
-        self.setpoint_cmd = [0.0, 0.0, 0.0]
+        self.setpoint_cmd = [1500.0, 1500.0, 1500.0, 3.0]
 
         # The setpoint of orientation in euler angles at which you want to stabilize the drone
         # [r_setpoint, p_psetpoint, y_setpoint]
@@ -58,11 +60,22 @@ class Edrone():
 
         # initial setting of Kp, Kd and ki for [roll, pitch, yaw]. eg: self.Kp[2] corresponds to Kp value in yaw axis
         # after tuning and computing corresponding PID parameters, change the parameters
-        self.Kp = [0, 0, 0]
-        self.Ki = [0, 0, 0]
-        self.Kd = [0, 0, 0]
+        self.Kp = [30,87.5,0,1880.5]
+        self.Ki = [0,0,0,8]
+        self.Kd = [14,42.0,0,1200]
         # -----------------------Add other required variables for pid here ----------------------------------------------
         #
+        self.prev_error = [0.,0.,0.,0.]
+        self.error_sum = [0, 0, 0.,0]
+        self.max_values = [1024, 1024, 1024, 1024]
+        self.min_values = [0, 0, 0, 0]
+        #self.last_time = 0
+        # self.Iterm = [0., 0., 0.]
+        # self.rcThrottle_error = 0
+        self.latitude_error = 0
+        self.longitude_error = 0
+        self.latitude_out = 0
+        self.longitude_out = 0
 
         # Hint : Add variables for storing previous errors in each axis, like self.prev_values = [0,0,0] where corresponds to [roll, pitch, yaw]
         #        Add variables for limiting the values like self.max_values = [1024, 1024, 1024, 1024] corresponding to [prop1, prop2, prop3, prop4]
@@ -71,10 +84,13 @@ class Edrone():
         # ----------------------------------------------------------------------------------------------------------
 
         # # This is the sample time in which you need to run pid. Choose any time which you seem fit. Remember the stimulation step time is 50 ms
-        self.sample_time = 0.060  # in seconds
+        self.sample_time = 30  # in seconds
 
         # Publishing /edrone/pwm, /roll_error, /pitch_error, /yaw_error
         self.pwm_pub = rospy.Publisher('/edrone/pwm', prop_speed, queue_size=1)
+        self.debug_roll = rospy.Publisher('/roll', Float64 , queue_size=1)
+        self.latitude_pid_tune_pub = rospy.Publisher('/latitude_pid_tune', Float64, queue_size=1)
+        self.longitude_pid_tune_pub = rospy.Publisher('/longitude_pid_tune', Float64, queue_size=1)
         # ------------------------Add other ROS Publishers here-----------------------------------------------------
 
         # -----------------------------------------------------------------------------------------------------------
@@ -82,8 +98,18 @@ class Edrone():
         # Subscribing to /drone_command, imu/data, /pid_tuning_roll, /pid_tuning_pitch, /pid_tuning_yaw
         rospy.Subscriber('/drone_command', edrone_cmd, self.drone_command_callback)
         rospy.Subscriber('/edrone/imu/data', Imu, self.imu_callback)
-        rospy.Subscriber('/pid_tuning_roll', PidTune, self.roll_set_pid)
+        # rospy.Subscriber('/pid_tuning_roll', PidTune, self.roll_set_pid)
         # -------------------------Add other ROS Subscribers here----------------------------------------------------
+        # rospy.Subscriber('/pid_tuning_pitch',  PidTune, self.pitch_set_pid)
+        # rospy.Subscriber('/pid_tuning_yaw',  PidTune, self.yaw_set_pid)
+        # rospy.Subscriber('/pid_tuning_altitude',  PidTune, self.yaw_set_throttle)
+        # rospy.Subscriber('/throttle_error',  Float64, self.throttle_error_callback)
+        rospy.Subscriber('/latitude_error',  Float64, self.latitude_callback)
+        rospy.Subscriber('/longitude_error',  Float64, self.longitude_callback)
+    
+        rospy.Subscriber('/latitude_pid', Float64, self.latitude_pid_callback)
+        rospy.Subscriber('/longitude_pid', Float64, self.longitude_pid_callback)
+        # rospy.Subscriber('/zero_error', Float64, self.pwm_stop_callback)
         # ------------------------------------------------------------------------------------------------------------
 
     # Imu callback function
@@ -101,20 +127,60 @@ class Edrone():
         self.drone_orientation_quaternion[0] = msg.orientation.x
 
         # --------------------Set the remaining co-ordinates of the drone from msg----------------------------------------------
+        self.drone_orientation_quaternion[1] = msg.orientation.y
+        self.drone_orientation_quaternion[2] = msg.orientation.z
+        self.drone_orientation_quaternion[3] = msg.orientation.w
 
     def drone_command_callback(self, msg):
-        self.setpoint_cmd[0] = msg.rcRoll
+        self.setpoint_cmd[0] = msg.rcRoll *2000 + 1500
+        self.setpoint_cmd[1] = msg.rcPitch*2000 + 1500
+        self.setpoint_cmd[2] = msg.rcYaw
+        self.setpoint_cmd[3] = msg.rcThrottle
 
         # ---------------------------------------------------------------------------------------------------------------
 
     # Callback function for /pid_tuning_roll
     # This function gets executed each time when /tune_pid publishes /pid_tuning_roll
     def roll_set_pid(self, roll):
-        self.Kp[0] = roll.Kp * 0.06  # This is just for an example. You can change the ratio/fraction value accordingly
-        self.Ki[0] = roll.Ki * 0.008
-        self.Kd[0] = roll.Kd * 0.3
+        self.Kp[0] = roll.Kp * 0.5  # This is just for an example. You can change the ratio/fraction value accordingly
+        self.Ki[0] = roll.Ki * 0.01
+        self.Kd[0] = roll.Kd * 0.5
 
     # ----------------------------Define callback function like roll_set_pid to tune pitch, yaw--------------
+    def pitch_set_pid(self, pitch):
+    	self.Kp[1] = pitch.Kp * 0.5
+    	self.Ki[1] = pitch.Ki * 0.01
+        self.Kd[1] = pitch.Kd * 0.5
+
+    def yaw_set_pid(self, yaw):
+    	self.Kp[2] = yaw.Kp * 0.5
+    	self.Ki[2] = yaw.Ki * 0.01
+        self.Kd[2] = yaw.Kd * 0.5
+
+    def yaw_set_throttle(self, throttle):
+        self.Kp[3] = throttle.Kp * 2
+        self.Ki[3] = throttle.Kp * 0.01
+        self.Kd[3] = throttle.Kd * 0.5
+    
+    # def throttle_error_callback(self, msg):
+    #     self.rcThrottle_error = msg.data
+        #print(self.rcThrottle_error)
+
+    def latitude_callback(self, msg):
+        self.latitude_error = msg.data
+
+    def longitude_callback(self, msg):
+        self.longitude_error = msg.data
+
+    def latitude_pid_callback(self, msg):
+        self.latitude_out = msg.data
+    
+    def longitude_pid_callback(self, msg):
+        self.longitude_out = msg.data
+
+    # def pwm_stop_callback(self, msg):
+    #     global a
+    #     a = msg.data
 
     # ----------------------------------------------------------------------------------------------------------------------
 
@@ -141,9 +207,97 @@ class Edrone():
         self.setpoint_euler[0] = self.setpoint_cmd[0] * 0.02 - 30
 
         # Complete the equations for pitch and yaw axis
+        self.setpoint_euler[1] = self.setpoint_cmd[1] * 0.02 - 30
+        self.setpoint_euler[2] = self.setpoint_cmd[2] * 0.02 - 30
+
+        # -------------------------------------------------------------------------
+        #setpoint_cmd[3] is altitude error
+        # -------------------------------------------------------------------------
 
         # Also convert the range of 1000 to 2000 to 0 to 1024 for throttle here itslef
+        #self.setpoint_cmd[3] = (self.setpoint_euler[3] - 1000) * 1024 / 1000
+        #now = int(round(time.time() * 1000))
+        #time_change = now - self.last_time
+        #if(time_change >= self.last_time):
+        # print(self.latitude_error)
 
+
+
+        # Here index 0 stands for roll, 1 for pitch and 2 for yaw
+
+        #0.033 is diff_time as rate is 30Hz
+        # So 1/30 = 0.033
+
+        diff_time = 0.033
+
+        # error
+        error = [0,0,0,0]
+        error[0] = self.setpoint_euler[0] - self.drone_orientation_euler[1]
+        error[1] = self.setpoint_euler[1] - self.drone_orientation_euler[0]
+        error[2] = self.setpoint_euler[2] - self.drone_orientation_euler[2]
+        error[3] = self.setpoint_cmd[3]
+
+        # error sum
+       	self.error_sum[0] = (self.error_sum[0] + error[0])*diff_time
+        self.error_sum[1] = (self.error_sum[1] + error[1])*diff_time
+        self.error_sum[2] = (self.error_sum[2] + error[2])*diff_time
+        self.error_sum[3] = (self.error_sum[3] + error[3])*diff_time
+
+        #d_error
+        d_error = [0,0,0,0]
+       	d_error[0] = (error[0] - self.prev_error[0])/diff_time
+        d_error[1] = (error[1] - self.prev_error[1])/diff_time
+        d_error[2] = (error[2] - self.prev_error[2])/diff_time
+        d_error[3] = (error[3] - self.prev_error[3])/diff_time
+
+        # output
+        roll_out = self.Kp[0] * error[0] + self.Ki[0] * self.error_sum[0] + self.Kd[0] * d_error[0]
+        pitch_out = self.Kp[1] * error[1] + self.Ki[1] * self.error_sum[1] + self.Kd[1] * d_error[1]
+        yaw_out = 0  # As yaw is not changed
+        altitude_out = self.Kp[3] * self.setpoint_cmd[3] + self.Ki[3] * self.error_sum[3] + self.Kd[3] * d_error[3]
+
+       	self.prev_error = error
+
+
+       	#self.last_time = now
+        #1100 + thgrotle + .......
+        # print(self.latitude_error, self.longitude_error)
+
+
+
+        # latitude pid output are multiplied by 10 because the output produced is too small to have the accurate change in propeller speed
+       	self.pwm_cmd.prop1 = (1100 + altitude_out - (roll_out + self.latitude_out * 10) + (pitch_out + self.longitude_out * 10))*0.512
+       	self.pwm_cmd.prop2 = (1100 + altitude_out - (roll_out + self.latitude_out * 10) - (pitch_out + self.longitude_out * 10))*0.512
+       	self.pwm_cmd.prop3 = (1100 + altitude_out + (roll_out + self.latitude_out * 10) - (pitch_out + self.longitude_out * 10))*0.512
+       	self.pwm_cmd.prop4 = (1100 + altitude_out + (roll_out + self.latitude_out * 10) + (pitch_out + self.longitude_out * 10))*0.512
+
+        # self.debug_roll.publish(error[0])
+        # print(self.Kp, self.Ki, self.Kd)
+        # self.latitude_pid_tune_pub.publish(self.latitude_error * 100000 +1500)
+        # self.longitude_pid_tune_pub.publish(self.longitude_error * 100000 +1500)
+        #print(self.setpoint_cmd)
+        #print(self.pwm_cmd.prop1, self.pwm_cmd.prop2, self.pwm_cmd.prop3, self.pwm_cmd.prop4)
+
+        if(self.pwm_cmd.prop1 >= self.max_values[0]):
+            self.pwm_cmd.prop1 = 1023
+        elif(self.pwm_cmd.prop1 <= self.min_values[0]):
+            self.pwm_cmd.prop1 = 0
+
+        if(self.pwm_cmd.prop2 >= self.max_values[1]):
+            self.pwm_cmd.prop2 = 1023
+        elif(self.pwm_cmd.prop2 <= self.min_values[1]):
+            self.pwm_cmd.prop2 = 0
+
+        if(self.pwm_cmd.prop3 >= self.max_values[2]):
+            self.pwm_cmd.prop3 = 1023
+        elif(self.pwm_cmd.prop3 <= self.min_values[2]):
+            self.pwm_cmd.prop3 = 0
+
+        if(self.pwm_cmd.prop4 >= self.max_values[3]):
+            self.pwm_cmd.prop4 = 1023
+        elif(self.pwm_cmd.prop4 <= self.min_values[3]):
+            self.pwm_cmd.prop4 = 0
+       	
         #
         #
         #
@@ -152,7 +306,6 @@ class Edrone():
         #
         #
         # ------------------------------------------------------------------------------------------------------------------------
-
         self.pwm_pub.publish(self.pwm_cmd)
 
 
