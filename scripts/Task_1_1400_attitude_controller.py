@@ -42,7 +42,8 @@ class Edrone():
 
         # This is the setpoint that will be received from the drone_command in the range from 1000 to 2000
         # [r_setpoint, p_setpoint, y_setpoint]
-        self.setpoint_cmd = [1500.0, 1500.0, 1500.0, 3.0]
+
+        self.setpoint_cmd = [0, 0, 0, 0]
 
         # The setpoint of orientation in euler angles at which you want to stabilize the drone
         # [r_setpoint, p_psetpoint, y_setpoint]

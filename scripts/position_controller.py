@@ -25,7 +25,7 @@ class Edrone():
         self.prev_error = [0,0,0]
         self.error_sum = [0,0,0]
         self.error = [0,0,0]
-        self.set_point = [19.0000451704,72.0, 1]
+        self.set_point = [19.0,72.0, 3]
         self.error_difference = [0,0,0]
 
         self.a=False
@@ -134,18 +134,18 @@ class Edrone():
         # self.zero_error.publish(1500)
 
         # print(self.latitude)
-        if(self.a==False and round(self.altitude, 2) == 1.05):
-            self.set_point[0] = 19.0 
+        if(self.a==False and round(self.altitude, 2) == 3.05):
+            self.set_point[0] = 19.0000451704 
             self.Kp[0] = 665.5
             self.Ki[0] = 0
             self.Kd[0] = 6000
             self.a = True
             print("Set Point Changed")
         
-        if(self.a==True and self.b == False and 18.9999998485 <self.latitude < 19.0000000107):
+        if(self.a==True and self.b == False and 19.0000406534 <self.latitude < 19.0000451704):
             # time.sleep(1.2) 434905 412765 434905
-            self.set_point[2] = 0
-            self.set_point[0] = 19.0
+            self.set_point[2] = 0.0
+            self.set_point[0] = 19.0000451704
             self.set_point[1] = 72.0
             self.Kp[0] = 3
             self.Kd[0] = 5.3
