@@ -20,10 +20,10 @@ class edrone_gripper():
     def function_repeat(self):
         if(self.gripper_check == "True"):
             service_response = self.service(True)
-            print(service_response.result + " Parcel picked up")
-        else:
-            service_response = self.service(False)
-            print(service_response.result +  " Parcel not picked up")
+            print(str(service_response.result) + " Parcel picked up")
+        # else:
+        #     service_response = self.service(False)
+        #     print(str(service_response.result) +  " Parcel not picked up")
 
     def gripper_check_callback(self, msg):
         self.gripper_check = msg.data

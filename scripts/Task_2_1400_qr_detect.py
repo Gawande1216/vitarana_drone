@@ -14,6 +14,8 @@ import cv2
 import numpy as np
 import rospy
 from pyzbar.pyzbar import decode
+from std_msgs.msg import Float64
+from std_msgs.msg import String
 # from PIL import Image
 
 class image_proc():
@@ -22,30 +24,28 @@ class image_proc():
 	def __init__(self):
 		rospy.init_node('barcode_test') #Initialise rosnode 
 		self.image_sub = rospy.Subscriber("/edrone/camera/image_raw", Image, self.image_callback) #Subscribing to the camera topic
+		# Publish to postion_controller
+		self.qr_latitude_pub = rospy.Publisher('/qr_latitude', String, queue_size=1)
+		self.qr_longitude_pub = rospy.Publisher('/qr_longitude', String, queue_size=1)
+		self.qr_altitude_pub = rospy.Publisher('/qr_altitude', String, queue_size=1)
+		self.qr_check_pub = rospy.Publisher('/qr_check', String, queue_size=1)
 		self.img = np.empty([]) # This will contain your image frame from camera
 		self.bridge = CvBridge()
-		# print(self.img)
-		# d = decode(self.img)
-		# output = d[0].data.decode()
-		# print(output)
-	# 	self.process_image()
-
-	# def process_image(self):
-	# 	qr_codes = pyzbar.decode(self.img)
-	# 	for qr_code in qr_codes:
-	# 		data = qr_code.data.decode("utf-8")
-	# 		print(data)
-
-
 
 	# Callback function of amera topic
 	def image_callback(self, data):
 		try:
 			self.img = self.bridge.imgmsg_to_cv2(data, "bgr8") # Converting the image to OpenCV standard image
-			# print(self.img)
 			d = decode(self.img)
-			output = d[0].data.decode()
-			print(output)
+			if(d):
+				output = d[0].data.decode()
+				# Publish to postion_controller
+				self.qr_latitude_pub.publish(output[0:7])
+				self.qr_longitude_pub.publish(output[8:15])
+				self.qr_altitude_pub.publish(output[16:20])
+				# Publish to position_controller to confirm that qr code is scanned
+				self.qr_check_pub.publish("True")
+				print(output)
 		except CvBridgeError as e:
 			print(e)
 			return

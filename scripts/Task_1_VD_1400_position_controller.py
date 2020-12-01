@@ -19,13 +19,14 @@ class Edrone():
         rospy.init_node('position_controller')  # initializing ros node with name drone_control
 
         # Declaring all the variables
-        self.latitude = 0
-        self.longitude = 0
-        self.altitude = 0
+        self.drone_position = [0,0,0]
+        # self.latitude = 0
+        # self.longitude = 0
+        # self.altitude = 0
         self.prev_error = [0,0,0]
         self.error_sum = [0,0,0]
         self.error = [0,0,0]
-        self.set_point = [19.0000451704,72.0, 1]
+        self.set_point = [19.0009248718,71.9998318945,24]
         self.error_difference = [0,0,0]
 
         self.a=False
@@ -34,27 +35,27 @@ class Edrone():
         self.sample_time = 30
 
         #Kp = [0,0] Kp[0] corresponds to Kp for latitude, Kp[1] for longitude and so for for Ki and Kd
-        self.Kp = [3.2,10]
-        self.Ki = [0.,0]
-        self.Kd = [5.3,15]
+        self.Kp = [3,8]
+        self.Ki = [0,0]
+        self.Kd = [5.3,7]
 
         # All the Publishers
         # self.pwm_pub = rospy.Publisher('/edrone/pwm', prop_speed, queue_size=1)
-        self.throttle_pub = rospy.Publisher('/throttle_error', Float64, queue_size=1)
-        self.latitude_error_pub = rospy.Publisher('/latitude_error', Float64, queue_size=1)
-        self.longitude_error_pub = rospy.Publisher('/longitude_error', Float64, queue_size=1)
-        self.latitude_pid_pub = rospy.Publisher('/latitude_pid', Float64, queue_size=1)
-        self.longitude_pid_pub = rospy.Publisher('/longitude_pid', Float64, queue_size=1)
-        self.z_error = rospy.Publisher('/z_error', Float64, queue_size=1)
-        self.zero_error = rospy.Publisher('/zero_error', Float64, queue_size=1)
+        # self.throttle_pub = rospy.Publisher('/throttle_error', Float64, queue_size=1)
+        # self.latitude_error_pub = rospy.Publisher('/latitude_error', Float64, queue_size=1)
+        # self.longitude_error_pub = rospy.Publisher('/longitude_error', Float64, queue_size=1)
+        # self.latitude_pid_pub = rospy.Publisher('/latitude_pid', Float64, queue_size=1)
+        # self.longitude_pid_pub = rospy.Publisher('/longitude_pid', Float64, queue_size=1)
+        # self.z_error = rospy.Publisher('/z_error', Float64, queue_size=1)
+        # self.zero_error = rospy.Publisher('/zero_error', Float64, queue_size=1)
         self.drone_cmd_pub = rospy.Publisher('/drone_command', edrone_cmd, queue_size=1)
 
         # All the Subscribers
         rospy.Subscriber('/edrone/gps', NavSatFix, self.gps_callback)
-        rospy.Subscriber('/pid_tuning_roll', PidTune, self.roll_set_pid)
-        rospy.Subscriber('/pid_tuning_pitch',  PidTune, self.pitch_set_pid)
+        # rospy.Subscriber('/pid_tuning_roll', PidTune, self.roll_set_pid)
+        # rospy.Subscriber('/pid_tuning_pitch',  PidTune, self.pitch_set_pid)
         # rospy.Subscriber('/pid_tuning_yaw',  PidTune, self.yaw_set_pid)
-        rospy.Subscriber('/pid_tuning_altitude', PidTune, self.altitude_set_pid)
+        # rospy.Subscriber('/pid_tuning_altitude', PidTune, self.altitude_set_pid)
         # rospy.Subscriber('/set_latitude', Float64, self.set_latitude)
         
         self.edrone_cmd_object = edrone_cmd()
@@ -63,9 +64,9 @@ class Edrone():
         self.edrone_cmd_object.rcThrottle = 0
 
     def gps_callback(self, msg):
-       	self.latitude = msg.latitude
-       	self.longitude = msg.longitude
-       	self.altitude = msg.altitude
+       	self.drone_position[0] = msg.latitude
+       	self.drone_position[1] = msg.longitude
+       	self.drone_position[2] = msg.altitude
 
     def altitude_set_pid(self, msg):
     	self.Kp[1] = msg.Kp * 0.5
@@ -98,26 +99,33 @@ class Edrone():
 
 
         
-        # This is altitude error which is published on attitude controller
-        self.error[2] = self.set_point[2] - self.altitude
-        
+        # This is altitude error which is published on attitude controller        
 
         #Index 0 for latitude and 1 for longitude and 2 for altitude
-        self.error[0] = self.set_point[0] - self.latitude
+        self.error[0] = self.set_point[0] - self.drone_position[0]
+        self.error[1] = self.set_point[1] - self.drone_position[1]
+
         self.error_sum[0]+=self.error[0] * 0.033
+        self.error_sum[1]+=self.error[1] * 0.033
+
         self.error_difference[0] = (self.error[0] - self.prev_error[0])/0.033
+        self.error_difference[1] = (self.error[1] - self.prev_error[1])/0.033
+
         output_latitude = self.Kp[0] * self.error[0] + self.Ki[0] * self.error_sum[0] + self.Kd[0] * self.error_difference[0]
+        output_longitude = self.Kp[1] * self.error[1] + self.Ki[1] * self.error_sum[1] + self.Kd[1] * self.error_difference[1]
+
         self.prev_error[0] = self.error[0]
+        self.prev_error[1] = self.error[1]
 
         # Index 1 for longitude
-        self.error[1] = self.set_point[1] - self.longitude
-        self.error_sum[1]+=self.error[1] * 0.033
-        self.error_difference[1] = (self.error[1] - self.prev_error[1])/0.033
-        output_longitude = self.Kp[1] * self.error[1] + self.Ki[1] * self.error_sum[1] + self.Kd[1] * self.error_difference[1]
-        self.prev_error[1] = self.error[1]
         
-        self.edrone_cmd_object.rcRoll = self.error[0]
-        self.edrone_cmd_object.rcPitch = self.error[1]
+        self.error[2] = self.set_point[2] - self.drone_position[2]
+        
+        
+        
+        
+        self.edrone_cmd_object.rcRoll = output_latitude
+        self.edrone_cmd_object.rcPitch = output_longitude
         self.edrone_cmd_object.rcThrottle = self.error[2]
 
         # Publishing to edrone_cmd topic
@@ -126,30 +134,31 @@ class Edrone():
 
 
         # self.longitude_error_pub.publish(self.error[1])
-        self.latitude_error_pub.publish(self.error[0])
-        self.latitude_pid_pub.publish(output_latitude)
+        # self.latitude_error_pub.publish(self.error[0])
+        # self.latitude_pid_pub.publish(output_latitude)
         # self.longitude_error_pub.publish(output_longitude)
         # print(output_latitude)
         # self.throttle_pub.publish(self.error[2])
         # self.zero_error.publish(1500)
 
         # print(self.latitude)
-        if(self.a==False and round(self.altitude, 2) == 1.05):
-            self.set_point[0] = 19.0 
-            self.Kp[0] = 665.5
-            self.Ki[0] = 0
-            self.Kd[0] = 6000
+        if(self.a==False and self.error[2] < 0.1 and self.error[2] > -0.1):
+            self.set_point[0] = 19.0007046575
+            self.set_point[1] = 71.9998955286 
+            # self.Kp[0] = 665.5
+            # self.Ki[0] = 0
+            # self.Kd[0] = 6000
             self.a = True
             print("Set Point Changed")
         
-        if(self.a==True and self.b == False and 18.9999998485 <self.latitude < 19.0000000107):
+        if(self.a==True and self.b == False and -0.000004517 <self.error[0] < 0  and -0.000004517 <self.error[1] < 0):
             # time.sleep(1.2) 434905 412765 434905
-            self.set_point[2] = 0
-            self.set_point[0] = 19.0
-            self.set_point[1] = 72.0
-            self.Kp[0] = 3
-            self.Kd[0] = 5.3
-            print("Set Point Chnaged")
+            self.set_point[2] = 22
+            # self.set_point[0] = 19.0000451704
+            # self.set_point[1] = 72.0
+            # self.Kp[0] = 3
+            # self.Kd[0] = 5.3
+            print("Set Point Changed")
             self.b=True
         # print(self.altitude)
         # if(a==True and b==True and round(self.altitude, 3) == 0.366):
