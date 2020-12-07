@@ -267,7 +267,7 @@ class Edrone():
             self.setpoint[0] = self.drone_position[0]
             self.setpoint[1] = self.drone_position[1]
             print("Obstcale")
-            self.g = True
+            self.g = True 
 
         # If there is is a obstacle then the drone stopped by giving deone position as set point and as per BUG2 ALGORITHM to follow straight line from box to location to delivery location and
         #  to switch beteen line follower and wall follower depending on obstcale is present or not.
